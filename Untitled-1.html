@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Geolocation – Distance to Kasem Bundit University</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #111833;
+      --fg: #e8ecff;
+      --muted: #93a1c8;
+      --accent: #6ea8fe;
+      --danger: #ff6b6b;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--fg);
+      background: radial-gradient(1200px 800px at 10% 10%, #0f1730, #0b1020 50%), var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(720px, 92vw);
+      background: linear-gradient(180deg, #121a36 0%, #0e142c 100%);
+      border: 1px solid #223063;
+      border-radius: 20px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+      padding: 22px 22px 18px;
+    }
+    h1 { margin: 0 0 8px; font-weight: 700; letter-spacing: 0.3px; }
+    p.sub { margin-top: 0; color: var(--muted); }
+    .row { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 640px) { .row { grid-template-columns: 1.2fr 1fr; } }
+    label { font-size: 14px; color: var(--muted); }
+    select, input[type="number"], button {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #2a3875;
+      background: #0d1430;
+      color: var(--fg);
+      outline: none;
+      font-size: 15px;
+    }
+    select:focus, input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(110,168,254,.2); }
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #6ea8fe, #4f88e6);
+      color: #071022;
+      font-weight: 700;
+      border: none;
+      transition: transform .05s ease;
+    }
+    button:active { transform: translateY(1px); }
+    .status { margin-top: 12px; color: var(--muted); min-height: 1.2em; }
+    .result { margin-top: 6px; font-size: 20px; font-weight: 700; }
+    .error { color: var(--danger); }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .coords { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #b6c3ff; opacity: .85; }
+    footer { margin-top: 16px; font-size: 12px; color: var(--muted); text-align: center; }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <h1>Distance to Kasem Bundit University</h1>
+    <p class="sub">Click the button and we’ll calculate how far you are from the university.</p>
+
+    <div class="row" aria-label="University location">
+      <div>
+        <label for="campus">Campus (optional)</label>
+        <select id="campus">
+          <!-- Coordinates are approximate; update if your instructor provided exact values. -->
+          <option value="13.7408,100.6500">Pattanakarn Campus</option>
+          <option value="13.8040,100.7410">Romklao Campus</option>
+        </select>
+        <div class="hint">Tip: If your course expects one specific campus, select it here.</div>
+      </div>
+      <div>
+        <label for="customLat">Or set custom coordinates</label>
+        <div style="display:grid; gap:8px; grid-template-columns: 1fr 1fr;">
+          <input id="customLat" type="number" step="any" placeholder="Latitude (e.g., 13.7408)" />
+          <input id="customLng" type="number" step="any" placeholder="Longitude (e.g., 100.6500)" />
+        </div>
+        <div class="hint">Leave blank to use the selected campus coordinates.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
+      <button id="locateBtn" type="button">Where am I?</button>
+      <div class="coords" id="myCoords" aria-live="polite"></div>
+    </div>
+
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="result" id="result" aria-live="polite"></div>
+
+    <footer>
+      Works best over HTTPS or on <code>localhost</code> (required by the browser’s Geolocation API).
+    </footer>
+  </main>
+
+  <script>
+    // Haversine formula in kilometers
+    function haversine(lat1, lon1, lat2, lon2) {
+      const toRad = d => (d * Math.PI) / 180;
+      const R = 6371; // Earth radius in km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getUniversityCoords() {
+      const latInput = document.getElementById('customLat');
+      const lngInput = document.getElementById('customLng');
+      const customLat = parseFloat(latInput.value);
+      const customLng = parseFloat(lngInput.value);
+      if (!Number.isNaN(customLat) && !Number.isNaN(customLng)) {
+        return { lat: customLat, lng: customLng };
+      }
+      const [lat, lng] = document.getElementById('campus').value.split(',').map(Number);
+      return { lat, lng };
+    }
+
+    function showStatus(msg, isError = false) {
+      const s = document.getElementById('status');
+      s.textContent = msg;
+      s.className = 'status' + (isError ? ' error' : '');
+    }
+
+    function showCoords(lat, lng) {
+      document.getElementById('myCoords').textContent = `Your location: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+
+    function showResult(km) {
+      // Requirement: show the exact phrasing
+      document.getElementById('result').textContent = `You're ${km.toFixed(2)} km away from the Kasem Bundit University`;
+    }
+
+    document.getElementById('locateBtn').addEventListener('click', () => {
+      if (!('geolocation' in navigator)) {
+        showStatus('Geolocation is not supported by your browser.', true);
+        return;
+      }
+
+      showStatus('Locating you…');
+      document.getElementById('result').textContent = '';
+
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const { latitude, longitude } = pos.coords;
+          showCoords(latitude, longitude);
+
+          const uni = getUniversityCoords();
+          const km = haversine(latitude, longitude, uni.lat, uni.lng);
+          showResult(km);
+          showStatus('Success!');
+        },
+        err => {
+          const map = {
+            1: 'Permission denied. Please allow location access and try again.',
+            2: 'Position unavailable. Move to an open area or check your connection.',
+            3: 'Request timed out. Try again.'
+          };
+          showStatus(map[err.code] || 'Unable to get your location.', true);
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      );
+    });
+  </script>
+</body>
+</html>
